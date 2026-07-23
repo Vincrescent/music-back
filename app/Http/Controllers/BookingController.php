@@ -7,9 +7,16 @@ use App\Models\Booking;
 
 class BookingController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $bookings = Booking::with(['user', 'studio'])->orderBy('booking_date', 'desc')->get();
+        $user = $request->user();
+        $query = Booking::with(['user', 'studio'])->orderBy('booking_date', 'desc');
+
+        if ($user && !in_array(strtolower($user->role ?? ''), ['admin', 'kasir', 'pemilik', 'teknisi'])) {
+            $query->where('user_id', $user->id);
+        }
+
+        $bookings = $query->get();
         return response()->json([
             'success' => true,
             'data' => $bookings
