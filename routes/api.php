@@ -10,6 +10,7 @@ use App\Http\Controllers\EquipmentController;
 use App\Http\Controllers\StudioController;
 use App\Http\Controllers\TechnicianController;
 use App\Http\Controllers\MaintenanceController;
+use App\Http\Controllers\ProfileController;
 
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
@@ -47,4 +48,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/studios/{id}', [StudioController::class, 'destroy']);
 
     Route::get('/admin/stats', [AdminController::class, 'stats']);
+
+    Route::get('/profile', [ProfileController::class, 'show']);
+    Route::put('/profile', [ProfileController::class, 'update']);
+    Route::put('/profile/password', [ProfileController::class, 'updatePassword']);
+    Route::post('/profile/avatar', [ProfileController::class, 'updateAvatar']);
 });
