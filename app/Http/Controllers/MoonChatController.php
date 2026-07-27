@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Log;
 class MoonChatController extends Controller
 {
     /**
-     * MOON AI Chat — proxies user messages to Google Gemini API
+     * MOON AI Chat — proxies user messages to OpenRouter API
      * with Studio Musik Lantai Atas context.
      */
     public function chat(Request $request)
@@ -19,7 +19,7 @@ class MoonChatController extends Controller
             'history' => 'nullable|array',
         ]);
 
-        $apiKey = env('GEMINI_API_KEY');
+        $apiKey = config('services.openrouter.api_key');
 
         if (!$apiKey) {
             return response()->json([
@@ -29,7 +29,7 @@ class MoonChatController extends Controller
         }
 
         // Studio context for MOON's personality
-        $systemInstruction = <<<EOT
+        $systemPrompt = <<<EOT
 Kamu adalah MOON 🌙, asisten AI virtual milik Studio Musik Lantai Atas. Kamu ramah, helpful, dan punya kepribadian yang hangat dengan sentuhan humor.
 
 TENTANG STUDIO MUSIK LANTAI ATAS:
@@ -74,66 +74,71 @@ ATURAN KAMU:
 7. Selalu akhiri dengan sesuatu yang helpful atau ajakan untuk booking
 EOT;
 
-        // Build conversation history for Gemini
-        $contents = [];
+        // Build messages array (OpenAI-compatible format)
+        $messages = [
+            ['role' => 'system', 'content' => $systemPrompt],
+        ];
 
         // Add conversation history if provided
         if ($request->history && is_array($request->history)) {
             foreach ($request->history as $msg) {
-                $role = $msg['role'] === 'user' ? 'user' : 'model';
-                $contents[] = [
+                $role = $msg['role'] === 'user' ? 'user' : 'assistant';
+                $messages[] = [
                     'role' => $role,
-                    'parts' => [['text' => $msg['text']]],
+                    'content' => $msg['text'],
                 ];
             }
         }
 
         // Add the current user message
-        $contents[] = [
+        $messages[] = [
             'role' => 'user',
-            'parts' => [['text' => $request->message]],
+            'content' => $request->message,
         ];
 
         try {
-            $response = Http::timeout(30)->post(
-                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={$apiKey}",
-                [
-                    'system_instruction' => [
-                        'parts' => [['text' => $systemInstruction]],
-                    ],
-                    'contents' => $contents,
-                    'generationConfig' => [
-                        'temperature' => 0.7,
-                        'topP' => 0.9,
-                        'maxOutputTokens' => 1024,
-                    ],
-                ]
-            );
+            $response = Http::withoutVerifying()
+                ->timeout(30)
+                ->withHeaders([
+                    'Authorization' => "Bearer {$apiKey}",
+                    'Content-Type' => 'application/json',
+                    'HTTP-Referer' => config('app.url', 'http://localhost'),
+                    'X-Title' => 'Studio Musik Lantai Atas',
+                ])
+                ->post('https://openrouter.ai/api/v1/chat/completions', [
+                    'model' => 'google/gemini-2.0-flash-exp:free',
+                    'messages' => $messages,
+                    'temperature' => 0.7,
+                    'max_tokens' => 1024,
+                ]);
 
             if ($response->successful()) {
                 $data = $response->json();
-                $reply = $data['candidates'][0]['content']['parts'][0]['text'] ?? 'Maaf, MOON tidak bisa memproses permintaan kamu saat ini. 🌙';
+                $reply = $data['choices'][0]['message']['content'] ?? 'Maaf, MOON tidak bisa memproses permintaan kamu saat ini. 🌙';
 
                 return response()->json([
                     'reply' => $reply,
                     'error' => false,
                 ]);
             } else {
-                Log::error('Gemini API error', [
+                Log::error('OpenRouter API error', [
                     'status' => $response->status(),
                     'body' => $response->body(),
                 ]);
 
                 return response()->json([
-                    'reply' => 'Maaf, MOON sedang mengalami gangguan. Coba lagi nanti ya! 🌙',
+                    'reply' => 'Maaf, MOON sedang mengalami gangguan (kode: ' . $response->status() . '). Coba lagi nanti ya! 🌙',
                     'error' => true,
                 ]);
             }
         } catch (\Exception $e) {
-            Log::error('MoonChat exception', ['message' => $e->getMessage()]);
+            Log::error('MoonChat exception', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
 
             return response()->json([
-                'reply' => 'Maaf, terjadi kesalahan koneksi. Coba lagi dalam beberapa saat. 🌙',
+                'reply' => 'Maaf, terjadi kesalahan koneksi. Coba lagi nanti ya! 🌙',
                 'error' => true,
             ]);
         }
