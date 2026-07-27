@@ -11,9 +11,12 @@ use App\Http\Controllers\StudioController;
 use App\Http\Controllers\TechnicianController;
 use App\Http\Controllers\MaintenanceController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\MoonChatController;
 
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
+
+Route::post('/moon/chat', [MoonChatController::class, 'chat']);
 
 Route::get('/reviews', [ReviewController::class, 'index']);
 Route::post('/reviews', [ReviewController::class, 'store']);
